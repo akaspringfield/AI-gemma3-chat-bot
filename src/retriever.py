@@ -4,8 +4,10 @@
 Author: Akash Mambally
 Date : 05-01-2026
 
-Got the similar response as you said now we'll Step 5 — Semantic Retriever10:51 AMClaude responded: Step 5 of 8 — Semantic RetrieverStep 5 of 8 — Semantic Retriever
-This step builds src/retriever.py — the module that takes a user query, runs it through the cache layers, and if needed performs the actual ANN search against ChromaDB to return the most relevant chunks.
+Step 5 — Semantic Retriever
+This step builds src/retriever.py — the module that takes a user query, 
+runs it through the cache layers, 
+and if needed performs the actual ANN search against ChromaDB to return the most relevant chunks.
 
 5.1 — How this step fits in the pipeline
 
