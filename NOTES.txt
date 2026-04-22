@@ -1,0 +1,238 @@
+Implementation blueprint
+Data ingestion — Use RecursiveCharacterTextSplitter from LangChain with chunk_size=512 and chunk_overlap=64 (roughly 10–20%). Feed chunks into BAAI/bge-large-en via sentence-transformers, then store vectors in ChromaDB for persistence or FAISS for pure-speed in-memory retrieval. For CPU-only machines, the smaller all-MiniLM-L6-v2 offers a good latency/quality trade-off.
+Multi-layer caching — The key insight is the order of checks. Always hit the LLM response cache first (cheapest if it hits), then the vector search cache, then the embedding cache. Use cosine similarity ≥ 0.9 as the threshold to avoid stale cached answers for meaningfully different queries. Redis works well for all three layers; a simple Python dict works fine for prototyping.
+Local LLM — llama-cpp-python with GGUF-quantized Mistral-7B-v0.3-Q4_K_M is the sweet spot for CPU machines. For GPU setups, load Llama-3-8B via transformers with 4-bit quantization using bitsandbytes. The system prompt should hard-instruct: (1) answer only from the provided context, (2) cite the document name/chunk ID, and (3) say "I don't know based on the provided documents" when context is insufficient.
+Streaming — With llama-cpp-python set stream=True; with the transformers library use TextStreamer. This cuts perceived latency dramatically even when total generation time is the same.
+Similarity threshold tuning — 0.9 is a safe starting point. If you're seeing stale cache hits, raise it to 0.92–0.95. If the cache rarely hits (queries vary a lot), consider lowering to 0.85 with a "freshness" TTL (e.g. invalidate after 24 hours) to balance coverage vs staleness.
+
+
+Step 1 of 8 — Project structure & environment setup
+This is the foundation everything else builds on. Let's get it right before touching any RAG code.
+
+1.1 — Create the project folder structure
+Open your terminal and run:
+
+mkdir rag_pipeline
+cd rag_pipeline
+
+mkdir -p data/raw data/processed
+mkdir -p cache/embeddings cache/vector_search cache/llm_responses
+mkdir -p vectorstore
+mkdir -p models
+mkdir -p src
+touch src/__init__.py
+touch src/ingest.py src/embedder.py src/retriever.py src/cache.py src/llm.py src/pipeline.py
+touch config.py main.py .env
+
+--
+
+Your folder layout will look like this:
+
+rag_pipeline/
+├── data/
+│   ├── raw/          ← drop your PDF/TXT/DOCX files here
+│   └── processed/    ← chunked text stored here
+├── cache/
+│   ├── embeddings/   ← Layer 1 cache
+│   ├── vector_search/← Layer 2 cache
+│   └── llm_responses/← Layer 3 cache
+├── vectorstore/      ← ChromaDB persists here
+├── models/           ← GGUF model file goes here
+├── src/
+│   ├── ingest.py
+│   ├── embedder.py
+│   ├── retriever.py
+│   ├── cache.py
+│   ├── llm.py
+│   └── pipeline.py
+├── config.py
+├── main.py
+└── .env
+
+--
+
+1.2 — Create a Python virtual environment
+# Make sure you have Python 3.10+
+python --version
+
+# Create virtual env
+python -m venv venv
+
+# Activate it
+# On Windows:
+venv\Scripts\activate
+# On Linux/Mac:
+source venv/bin/activate
+
+1.3 — Install all dependencies
+from requirements.txt
+
+--
+
+Note on llama-cpp-python: The command above installs the CPU-only build. When you move to a CUDA server later, reinstall with one command:
+CMAKE_ARGS="-DLLAMA_CUDA=on" pip install llama-cpp-python --upgrade --force-reinstall
+
+--
+
+FORCE official prebuilt wheels (IMPORTANT)
+
+Run this EXACT command:
+
+pip install llama-cpp-python \
+--prefer-binary \
+--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+
+1.6 — Verify the setup
+# Run this quick sanity check — paste into your terminal
+python -c "
+import langchain, chromadb, sentence_transformers, llama_cpp, diskcache
+print('langchain          :', langchain.__version__)
+print('chromadb           :', chromadb.__version__)
+print('sentence-transformers:', sentence_transformers.__version__)
+print('llama-cpp-python   :', llama_cpp.__version__)
+print('diskcache          :', diskcache.__version__)
+print()
+print('All dependencies OK!')
+"
+
+✅ Step 1 complete — what you have now
+What                        Why
+Clean folder structure      Each concern isolated — easy to swap components
+Virtual environment         No dependency conflicts with other projects
+config.py                   One file to change when you move to GPU server
+CPU-first install           Works on 2GB GPU machine today
+GPU upgrade path            One pip install command when server is ready
+
+-------------------------
+
+After finishing Steps 2 - Steps 8
+
+✅ All 8 Steps Complete
+Here is the full picture of what you have built:
+rag_pipeline/
+├── data/raw/          ← drop documents here
+├── data/processed/    ← chunked JSON (auto-generated)
+├── cache/             ← 3-layer diskcache (auto-generated)
+├── vectorstore/       ← ChromaDB on disk (auto-generated)
+├── models/            ← Gemma 3 4B GGUF
+├── src/
+│   ├── ingest.py      ← Step 2: PDF/DOCX/TXT → chunks
+│   ├── embedder.py    ← Step 3: chunks → ChromaDB vectors
+│   ├── cache.py       ← Step 4: 3-layer cache manager
+│   ├── retriever.py   ← Step 5: query → top-K chunks
+│   ├── llm.py         ← Step 6: Gemma 3 streaming generation
+│   └── pipeline.py    ← Step 7: full pipeline orchestrator
+├── main.py            ← Step 8: interactive CLI
+└── config.py          ← single config for all parameters
+
+StepModuleWhat it does1config.pyCentral config, GPU-ready2ingest.pyLoad + chunk documents3embedder.pyBGE embeddings + ChromaDB4cache.py3-layer cache with cosine sim5retriever.pyCache-aware ANN retrieval6llm.pyGemma 3 with citation prompt7pipeline.pyFull orchestration8main.pyInteractive CLI
+
+You now have a fully working, production-ready local RAG pipeline.
+
+Adding New Documents — 3 Simple Steps
+Step 1 — Drop your file into data/raw/
+rag_pipeline/
+└── data/
+    └── raw/
+        ├── test_doc.txt        ← already there
+        └── your_new_file.pdf   ← drop it here
+
+
+Supported formats:
+Format          Example
+PDF             report.pdf, manual.pdf
+Word            contract.docx, notes.docx
+Text            faq.txt, readme.txt
+Markdown        guide.md, docs.md
+
+Step 2 — Start the CLI and run /ingest
+python main.py
+
+Then inside the CLI:
+Ask > /ingest
+Expected output:
+Scanning data/raw/ for new documents...
+  ✓ Ingested  : 47 total chunks
+  ✓ Indexed   : 46 new chunks stored
+  Timings     : ingest 320ms  |  index 8420ms
+
+The pipeline automatically:
+
+Skips test_doc.txt — already indexed, MD5 hash unchanged
+Processes only your new file
+Embeds all new chunks into ChromaDB
+Leaves existing vectors untouched
+
+Step 3 — Ask questions about it
+Ask > What are the main topics in the new document?
+Ask > Summarise chapter 2
+Ask > What does the document say about pricing?
+
+
+What happens under the hood
+/ingest typed
+     │
+     ▼
+ingest.py scans data/raw/
+     │
+     ├── test_doc.txt  → MD5 unchanged → SKIP
+     │
+     └── your_new_file.pdf → NEW
+              │
+              ▼
+         Load pages (PyMuPDF)
+              │
+              ▼
+         Split into chunks
+         (512 chars, 64 overlap)
+              │
+              ▼
+         Embed with BGE model
+         (BAAI/bge-large-en-v1.5)
+              │
+              ▼
+         Store in ChromaDB
+         (new vectors alongside old)
+              │
+              ▼
+         Ready for questions
+
+Adding Multiple Documents at Once
+You can drop as many files as you want before running /ingest — it processes all of them in one go:
+data/raw/
+├── test_doc.txt
+├── annual_report.pdf
+├── product_manual.pdf
+├── meeting_notes.docx
+└── faq.txt
+
+Ask > /ingest
+
+  ✓ Ingested  : 312 total chunks
+  ✓ Indexed   : 311 new chunks stored
+Then ask cross-document questions:
+Ask > Compare the pricing mentioned in faq.txt and annual_report.pdf
+Ask > What do the meeting notes say about the product manual?
+
+One Thing to Watch — Cache Behaviour
+After ingesting a new document, if you asked a similar question before, the old cached answer won't include the new document's content. Fix it with /clear:
+Ask > /clear          ← wipe old cached answers
+  ✓ All caches cleared.
+
+Ask > What is this about?   ← now searches ALL documents fresh
+Or force a one-time fresh answer without clearing everything:
+python# In code — skip cache for one query
+result = pipeline.ask(
+    query      = "What is the new document about?",
+    skip_cache = True,    ← bypasses LLM cache for this query only
+)
+
+Quick Verification After Ingesting
+Ask > /status
+  ChromaDB documents : 312    ← went up from 1
+  LLM model          : ✓ ready
+  Cache layers:
+    embedding_cache        0 entries   ← cleared
+    vector_search_cache    0 entries   ← cleared
+    llm_response_cache     0 entries   ← cleared
+    

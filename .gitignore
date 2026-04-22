@@ -1,0 +1,25 @@
+# Environment
+.env
+venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# Data (generated)
+data/raw/
+data/processed/
+
+# Cache
+cache/
+
+# Vector DB
+vectorstore/
+
+# Models
+models/
+
+# OS files
+.DS_Store
+
+read_me.txt
