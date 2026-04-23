@@ -103,7 +103,7 @@ config.py                   One file to change when you move to GPU server
 CPU-first install           Works on 2GB GPU machine today
 GPU upgrade path            One pip install command when server is ready
 
--------------------------
+#-------------------------
 
 After finishing Steps 2 - Steps 8
 
@@ -236,3 +236,82 @@ Ask > /status
     vector_search_cache    0 entries   ← cleared
     llm_response_cache     0 entries   ← cleared
     
+#-------------------------
+
+FASTAPI SETUP
+python -m pip install fastapi==0.111.0 uvicorn==0.30.1 python-multipart==0.0.9 duckduckgo-search==6.2.6 aiofiles==23.2.1
+
+One thing to verify — folder structure
+Make sure these new folders exist:
+bash# Windows
+mkdir data\uploads
+mkdir data\sessions
+mkdir vectorstore\sessions
+
+python api.py
+
+Expected output:
+INFO — SessionManager ready — 0 active sessions
+INFO — Loading Gemma 3 4B from: models/gemma-3-4b-it-Q4_K_M.gguf
+INFO — Gemma 3 4B loaded successfully.
+INFO — RAG API ready.
+INFO — Uvicorn running on http://0.0.0.0:8000
+
+--
+Test with curl
+
+Session mode with file upload:
+bashcurl -X POST http://localhost:8000/ai/response-gemma \
+  -F "session_uuid=sess-001" \
+  -F "user_uuid=user-abc" \
+  -F "question=What is this document about?" \
+  -F "response_type=session" \
+  -F "files=@data/raw/test_doc.txt"
+
+Session mode — repeat question (cache hit):
+bashcurl -X POST http://localhost:8000/ai/response-gemma \
+  -F "session_uuid=sess-001" \
+  -F "user_uuid=user-abc" \
+  -F "question=What is this document about?" \
+  -F "response_type=session"
+
+General mode (web search):
+bashcurl -X POST http://localhost:8000/ai/response-gemma \
+  -F "session_uuid=sess-001" \
+  -F "user_uuid=user-abc" \
+  -F "question=What is the latest news about AI?" \
+  -F "response_type=general"
+
+Step I — Sample JSON response
+
+{
+  "session_uuid":        "sess-001",
+  "user_uuid":           "user-abc",
+  "question":            "What is this document about?",
+  "response_type":       "session",
+  "answer":              "This document is about a RAG pipeline for AI. [source: test_doc.txt, page: 0]",
+  "sources":             ["test_doc.txt"],
+  "files_uploaded":      ["test_doc.txt"],
+  "files_indexed":       ["test_doc.txt"],
+  "model_name":          "gemma-3-4b-it-Q4_K_M.gguf",
+  "embedding_model":     "BAAI/bge-large-en-v1.5",
+  "cache_hit":           false,
+  "cache_layer":         "none",
+  "response_time_ms":    11240.5,
+  "retrieval_ms":        38.2,
+  "generation_ms":       9820.1,
+  "file_processing_ms":  210.3,
+  "session_query_count": 1,
+  "session_created_at":  "2025-04-22T10:30:00+00:00",
+  "session_files_total": 1,
+  "chunks_retrieved":    3,
+  "timestamp":           "2025-04-22T10:30:11+00:00",
+  "api_version":         "1.0.0"
+}
+
+
+Health check:
+bashcurl http://localhost:8000/health
+
+
+

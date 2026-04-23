@@ -60,3 +60,23 @@ LLM_REPEAT_PENALTY = 1.0     # Gemma 3 recommended — do not change
 LLM_N_THREADS    = 8
 LLM_N_GPU_LAYERS = 0         # 0 = CPU only now; raise to 35 on GPU server
 LLM_STREAM       = True
+# ── API settings ───────────────────────────────────────
+API_HOST     = os.getenv("API_HOST", "0.0.0.0")
+API_PORT     = int(os.getenv("API_PORT", 8000))
+API_RELOAD   = os.getenv("API_RELOAD", "true").lower() == "true"
+
+# ── File upload ────────────────────────────────────────
+MAX_FILE_SIZE_MB          = int(os.getenv("MAX_FILE_SIZE_MB", 20))
+MAX_FILES_PER_REQUEST     = int(os.getenv("MAX_FILES_PER_REQUEST", 5))
+ALLOWED_EXTENSIONS        = os.getenv(
+    "ALLOWED_EXTENSIONS", ".pdf,.docx,.txt,.md"
+).split(",")
+UPLOAD_DIR                = os.path.join(BASE_DIR, "data", "uploads")
+UPLOAD_AUTO_DELETE_HOURS  = int(os.getenv("UPLOAD_AUTO_DELETE_HOURS", 24))
+
+# ── Session ────────────────────────────────────────────
+SESSION_DIR       = os.path.join(BASE_DIR, "data", "sessions")
+SESSION_TTL_HOURS = int(os.getenv("SESSION_TTL_HOURS", 24))
+
+# ── General mode ───────────────────────────────────────
+DDG_MAX_RESULTS = int(os.getenv("DDG_MAX_RESULTS", 5))
