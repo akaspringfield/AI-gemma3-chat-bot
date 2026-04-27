@@ -258,6 +258,7 @@ INFO — RAG API ready.
 INFO — Uvicorn running on http://0.0.0.0:8000
 
 --
+
 Test with curl
 
 Session mode with file upload:
@@ -282,7 +283,7 @@ bashcurl -X POST http://localhost:8000/ai/response-gemma \
   -F "question=What is the latest news about AI?" \
   -F "response_type=general"
 
-Step I — Sample JSON response
+Sample JSON response
 
 {
   "session_uuid":        "sess-001",
@@ -309,9 +310,9 @@ Step I — Sample JSON response
   "api_version":         "1.0.0"
 }
 
-
 Health check:
-bashcurl http://localhost:8000/health
+http://localhost:8000/health
 
-
+Flask API (testing)
+http://localhost:8000/docs
 
