@@ -499,6 +499,7 @@ View logs:
 ```bash
 sudo journalctl -u rag-pipeline -f
 ```
+<img width="687" height="364" alt="Screenshot (161)" src="https://github.com/user-attachments/assets/a0a82589-7ca5-49b9-85f1-374097c83eff" />
 
 ---
 
